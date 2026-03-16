@@ -442,7 +442,10 @@ async function cleanupBackdrops() {
 btnCleanup.addEventListener("click", cleanupBackdrops);
 
 // ── Import / Export ──
-document.getElementById("btn-export").addEventListener("click", async () => {
+const btnExport = document.getElementById("btn-export");
+btnExport.addEventListener("click", async () => {
+  btnExport.disabled = true;
+  btnExport.textContent = "exporting…";
   try {
     const data = await api.get("/api/data/export");
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -456,17 +459,23 @@ document.getElementById("btn-export").addEventListener("click", async () => {
     showToast(`exported ${data.record_count} records`);
   } catch (err) {
     showToast("export failed: " + err.message);
+  } finally {
+    btnExport.disabled = false;
+    btnExport.textContent = "export progress";
   }
 });
 
+const btnImport = document.getElementById("btn-import");
 const importFileInput = document.getElementById("import-file");
-document.getElementById("btn-import").addEventListener("click", () => {
+btnImport.addEventListener("click", () => {
   importFileInput.click();
 });
 
 importFileInput.addEventListener("change", async () => {
   const file = importFileInput.files[0];
   if (!file) return;
+  btnImport.disabled = true;
+  btnImport.textContent = "importing…";
   try {
     const text = await file.text();
     const data = JSON.parse(text);
@@ -478,6 +487,8 @@ importFileInput.addEventListener("change", async () => {
   } catch (err) {
     showToast("import failed: " + err.message);
   } finally {
+    btnImport.disabled = false;
+    btnImport.textContent = "import progress";
     importFileInput.value = "";
   }
 });

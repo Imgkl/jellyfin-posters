@@ -547,17 +547,17 @@ html, body {
   display: flex;
   gap: 10px;
   margin-top: 8px;
-  align-items: stretch;
 }
 
 .modal-actions .btn {
-  flex: 1;
-  width: auto;
+  flex: 1 1 0;
   margin-top: 0;
+  white-space: nowrap;
+  min-width: 0;
 }
 
-.modal-actions .btn-primary {
-  flex: 2;
+.modal-actions .btn.btn-primary {
+  flex: 2 1 0;
 }
 
 .modal-divider {
@@ -600,6 +600,11 @@ html, body {
   animation: spin 0.8s linear infinite;
   pointer-events: none;
   opacity: 0.5;
+}
+
+.btn:disabled {
+  pointer-events: none;
+  opacity: 0.6;
 }
 
 @keyframes spin {
