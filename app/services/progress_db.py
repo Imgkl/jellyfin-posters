@@ -11,14 +11,29 @@ CREATE TABLE IF NOT EXISTS progress (
     reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     poster_changed BOOLEAN DEFAULT 0,
     backdrop_changed BOOLEAN DEFAULT 0,
-    logo_changed BOOLEAN DEFAULT 0
+    logo_changed BOOLEAN DEFAULT 0,
+    poster_url TEXT DEFAULT '',
+    backdrop_url TEXT DEFAULT '',
+    logo_url TEXT DEFAULT ''
 );
 """
+
+_MIGRATE_COLUMNS = [
+    ("poster_url", "TEXT DEFAULT ''"),
+    ("backdrop_url", "TEXT DEFAULT ''"),
+    ("logo_url", "TEXT DEFAULT ''"),
+]
 
 
 async def init_db() -> None:
     async with aiosqlite.connect(settings.db_path) as db:
         await db.executescript(_SCHEMA)
+        # Migrate: add url columns if missing (existing DBs)
+        cursor = await db.execute("PRAGMA table_info(progress)")
+        existing = {row[1] for row in await cursor.fetchall()}
+        for col, typedef in _MIGRATE_COLUMNS:
+            if col not in existing:
+                await db.execute(f"ALTER TABLE progress ADD COLUMN {col} {typedef}")
         await db.commit()
 
 
@@ -28,18 +43,24 @@ async def mark_reviewed(
     poster_changed: bool = False,
     backdrop_changed: bool = False,
     logo_changed: bool = False,
+    poster_url: str = "",
+    backdrop_url: str = "",
+    logo_url: str = "",
 ) -> None:
     async with aiosqlite.connect(settings.db_path) as db:
         await db.execute(
-            """INSERT INTO progress (item_id, item_name, poster_changed, backdrop_changed, logo_changed)
-               VALUES (?, ?, ?, ?, ?)
+            """INSERT INTO progress (item_id, item_name, poster_changed, backdrop_changed, logo_changed, poster_url, backdrop_url, logo_url)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(item_id) DO UPDATE SET
                    reviewed_at = CURRENT_TIMESTAMP,
                    poster_changed = excluded.poster_changed,
                    backdrop_changed = excluded.backdrop_changed,
-                   logo_changed = excluded.logo_changed
+                   logo_changed = excluded.logo_changed,
+                   poster_url = excluded.poster_url,
+                   backdrop_url = excluded.backdrop_url,
+                   logo_url = excluded.logo_url
             """,
-            (item_id, item_name, poster_changed, backdrop_changed, logo_changed),
+            (item_id, item_name, poster_changed, backdrop_changed, logo_changed, poster_url, backdrop_url, logo_url),
         )
         await db.commit()
 
@@ -85,14 +106,17 @@ async def merge_records(records: list[dict]) -> int:
     async with aiosqlite.connect(settings.db_path) as db:
         for r in records:
             await db.execute(
-                """INSERT INTO progress (item_id, item_name, reviewed_at, poster_changed, backdrop_changed, logo_changed)
-                   VALUES (?, ?, ?, ?, ?, ?)
+                """INSERT INTO progress (item_id, item_name, reviewed_at, poster_changed, backdrop_changed, logo_changed, poster_url, backdrop_url, logo_url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(item_id) DO UPDATE SET
                        item_name = excluded.item_name,
                        reviewed_at = excluded.reviewed_at,
                        poster_changed = excluded.poster_changed,
                        backdrop_changed = excluded.backdrop_changed,
-                       logo_changed = excluded.logo_changed
+                       logo_changed = excluded.logo_changed,
+                       poster_url = excluded.poster_url,
+                       backdrop_url = excluded.backdrop_url,
+                       logo_url = excluded.logo_url
                 """,
                 (
                     r["item_id"],
@@ -101,6 +125,9 @@ async def merge_records(records: list[dict]) -> int:
                     r.get("poster_changed", False),
                     r.get("backdrop_changed", False),
                     r.get("logo_changed", False),
+                    r.get("poster_url", ""),
+                    r.get("backdrop_url", ""),
+                    r.get("logo_url", ""),
                 ),
             )
             count += 1
@@ -114,8 +141,8 @@ async def replace_all_records(records: list[dict]) -> int:
         count = 0
         for r in records:
             await db.execute(
-                """INSERT INTO progress (item_id, item_name, reviewed_at, poster_changed, backdrop_changed, logo_changed)
-                   VALUES (?, ?, ?, ?, ?, ?)
+                """INSERT INTO progress (item_id, item_name, reviewed_at, poster_changed, backdrop_changed, logo_changed, poster_url, backdrop_url, logo_url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     r["item_id"],
@@ -124,6 +151,9 @@ async def replace_all_records(records: list[dict]) -> int:
                     r.get("poster_changed", False),
                     r.get("backdrop_changed", False),
                     r.get("logo_changed", False),
+                    r.get("poster_url", ""),
+                    r.get("backdrop_url", ""),
+                    r.get("logo_url", ""),
                 ),
             )
             count += 1

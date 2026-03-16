@@ -16,6 +16,9 @@ class MarkReviewedRequest(BaseModel):
     poster_changed: bool = False
     backdrop_changed: bool = False
     logo_changed: bool = False
+    poster_url: str = ""
+    backdrop_url: str = ""
+    logo_url: str = ""
 
 
 class ImportRequest(BaseModel):

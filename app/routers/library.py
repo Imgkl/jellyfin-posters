@@ -56,5 +56,9 @@ async def mark_movie_reviewed(item_id: str, req: MarkReviewedRequest, state: App
         if m["id"] == item_id:
             name = m["name"]
             break
-    await mark_reviewed(item_id, name, req.poster_changed, req.backdrop_changed, req.logo_changed)
+    await mark_reviewed(
+        item_id, name,
+        req.poster_changed, req.backdrop_changed, req.logo_changed,
+        req.poster_url, req.backdrop_url, req.logo_url,
+    )
     return {"ok": True}

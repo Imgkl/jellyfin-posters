@@ -67,7 +67,7 @@ loginForm.addEventListener("submit", async (e) => {
     loginScreen.classList.add("hidden");
     mainScreen.classList.remove("hidden");
     if (movies.length > 0) {
-      navigateTo(0);
+      navigateTo(firstUnreviewedIndex());
     }
   } catch (err) {
     loginError.textContent = err.message;
@@ -77,6 +77,19 @@ loginForm.addEventListener("submit", async (e) => {
   }
 });
 
+// ── Auto-login (env credentials) ──
+async function autoLogin() {
+  try {
+    await api.post("/api/auth/login", { server_url: "", username: "", password: "" });
+    await loadMovies();
+    loginScreen.classList.add("hidden");
+    mainScreen.classList.remove("hidden");
+    if (movies.length > 0) navigateTo(firstUnreviewedIndex());
+  } catch {
+    // Credentials invalid, show login form
+  }
+}
+
 // ── Load movies ──
 async function loadMovies() {
   const data = await api.get("/api/movies");
@@ -85,6 +98,11 @@ async function loadMovies() {
   reviewedCount = movies.filter((m) => m.reviewed).length;
   renderSidebar();
   updateProgress();
+}
+
+function firstUnreviewedIndex() {
+  const idx = movies.findIndex((m) => !m.reviewed);
+  return idx >= 0 ? idx : 0;
 }
 
 // ── Sidebar ──
@@ -156,6 +174,10 @@ async function navigateTo(index) {
 
   movieTitle.textContent = `${movie.name}${movie.year ? ` (${movie.year})` : ""}`;
   highlightActive();
+
+  // Reset scroll positions
+  document.querySelector(".content").scrollTop = 0;
+  document.querySelectorAll(".thumb-grid").forEach((g) => (g.scrollTop = 0));
 
   // Show loading, fade out sections
   loadingEl.classList.remove("hidden");
@@ -265,11 +287,14 @@ async function applyAndNext() {
       }
     }
 
-    // Mark reviewed
+    // Mark reviewed (include applied URLs for export)
     await api.post(`/api/movies/${movie.id}/mark-reviewed`, {
       poster_changed: posterChanged,
       backdrop_changed: backdropChanged,
       logo_changed: logoChanged,
+      poster_url: grids.Primary.hasSelection() ? grids.Primary.getSelection() : "",
+      backdrop_url: grids.Backdrop.hasSelection() ? grids.Backdrop.getSelection() : "",
+      logo_url: grids.Logo.hasSelection() ? grids.Logo.getSelection() : "",
     });
 
     // Update local state
@@ -354,7 +379,7 @@ settingsForm.addEventListener("submit", async (e) => {
     lastServerUrl = serverUrl;
     lastUsername = username;
     await loadMovies();
-    if (movies.length > 0) navigateTo(0);
+    if (movies.length > 0) navigateTo(firstUnreviewedIndex());
     closeSettings();
     showToast("reconnected — " + movies.length + " movies loaded");
   } catch (err) {
@@ -385,9 +410,7 @@ async function refreshMovies() {
   try {
     const result = await api.post("/api/library/refresh", {});
     await loadMovies();
-    // Re-navigate to current movie (clamp if list shrank)
-    const idx = Math.min(currentIndex, movies.length - 1);
-    if (movies.length > 0) navigateTo(idx);
+    if (movies.length > 0) navigateTo(firstUnreviewedIndex());
     const parts = [result.total_movies + " movies"];
     if (result.stale_removed > 0) parts.push(result.stale_removed + " stale removed");
     showToast("refreshed — " + parts.join(", "));
@@ -451,10 +474,7 @@ importFileInput.addEventListener("change", async () => {
     const result = await api.post("/api/data/import", { mode: "merge", records });
     showToast(`imported ${result.imported} records`);
     await loadMovies();
-    if (movies.length > 0) {
-      const idx = Math.min(currentIndex, movies.length - 1);
-      navigateTo(idx);
-    }
+    if (movies.length > 0) navigateTo(firstUnreviewedIndex());
   } catch (err) {
     showToast("import failed: " + err.message);
   } finally {
@@ -560,7 +580,7 @@ document.addEventListener("keydown", (e) => {
       await loadMovies();
       loginScreen.classList.add("hidden");
       mainScreen.classList.remove("hidden");
-      if (movies.length > 0) navigateTo(0);
+      if (movies.length > 0) navigateTo(firstUnreviewedIndex());
     } else {
       // Auto-fill login form from server defaults
       if (status.default_server_url) {
@@ -569,9 +589,9 @@ document.addEventListener("keydown", (e) => {
       if (status.default_username) {
         document.getElementById("username").value = status.default_username;
       }
-      // Auto-submit if both username and password are configured on the server
+      // Auto-login if both username and password are configured on the server
       if (status.has_default_credentials) {
-        loginForm.dispatchEvent(new Event("submit", { cancelable: true }));
+        await autoLogin();
       }
     }
   } catch {
