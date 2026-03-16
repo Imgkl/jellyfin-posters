@@ -1,6 +1,6 @@
 services:
   jellyfin-posters:
-    image: ghcr.io/gokulbhasi/jellyfin-posters:latest
+    image: ghcr.io/imgkl/jellyfin-posters:latest
     container_name: jellyfin-posters
     ports:
       - "8000:8000"
