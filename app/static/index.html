@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>jellyfin poster manager</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="login-screen" class="screen">
+    <div class="login-card">
+      <h1 class="login-title">jellyfin poster manager</h1>
+      <form id="login-form" autocomplete="off">
+        <div class="form-group">
+          <label for="server-url">server url</label>
+          <input type="text" id="server-url" placeholder="http://localhost:8096">
+        </div>
+        <div class="form-group">
+          <label for="username">username</label>
+          <input type="text" id="username">
+        </div>
+        <div class="form-group">
+          <label for="password">password</label>
+          <input type="password" id="password">
+        </div>
+        <button type="submit" class="btn btn-primary" id="login-btn">login</button>
+        <div id="login-error" class="error-msg"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main Review Screen -->
+  <div id="main-screen" class="screen hidden">
+    <div class="layout">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <span class="sidebar-title">movies</span>
+          <div class="sidebar-actions">
+            <button class="sidebar-btn" id="btn-refresh" title="refresh movies">&#x21bb;</button>
+            <button class="sidebar-btn" id="btn-cleanup-backdrops" title="cleanup duplicate backdrops">&#x1f9f9;</button>
+            <button class="sidebar-btn" id="btn-settings" title="settings">&#x2699;</button>
+            <span class="sidebar-count" id="sidebar-count"></span>
+          </div>
+        </div>
+        <div class="movie-list-container">
+          <ul id="movie-list" class="movie-list"></ul>
+        </div>
+        <div class="sidebar-search">
+          <input type="text" id="search-input" placeholder="search..." autocomplete="off">
+        </div>
+      </aside>
+
+      <!-- Content -->
+      <main class="content">
+        <div class="content-header">
+          <div class="movie-title-bar">
+            <h2 id="movie-title" class="movie-title"></h2>
+            <span id="progress-counter" class="progress-counter"></span>
+          </div>
+        </div>
+
+        <div id="loading-indicator" class="loading hidden">loading images...</div>
+
+        <div id="image-sections">
+          <!-- Poster Section -->
+          <section class="image-section" data-type="Primary">
+            <div class="section-divider">
+              <span class="section-label">poster</span>
+            </div>
+            <div class="image-row">
+              <div class="current-image-col">
+                <div class="image-label">current</div>
+                <div class="image-frame current-frame" data-type="Primary">
+                  <img id="current-Primary" class="image-preview" alt="no poster">
+                  <div class="no-image">no poster</div>
+                </div>
+                <div class="current-meta" id="current-meta-Primary"></div>
+              </div>
+              <div class="available-image-col">
+                <div class="image-label">
+                  available
+                  <span class="image-counter" id="counter-Primary"></span>
+                </div>
+                <div class="thumb-grid" id="grid-Primary" data-type="Primary">
+                  <div class="no-image-grid">none available</div>
+                </div>
+                <div class="image-meta" id="meta-Primary"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Backdrop Section -->
+          <section class="image-section" data-type="Backdrop">
+            <div class="section-divider">
+              <span class="section-label">backdrop</span>
+            </div>
+            <div class="image-row">
+              <div class="current-image-col">
+                <div class="image-label">current</div>
+                <div class="image-frame current-frame" data-type="Backdrop">
+                  <img id="current-Backdrop" class="image-preview" alt="no backdrop">
+                  <div class="no-image">no backdrop</div>
+                </div>
+                <div class="current-meta" id="current-meta-Backdrop"></div>
+              </div>
+              <div class="available-image-col">
+                <div class="image-label">
+                  available
+                  <span class="image-counter" id="counter-Backdrop"></span>
+                </div>
+                <div class="thumb-grid" id="grid-Backdrop" data-type="Backdrop">
+                  <div class="no-image-grid">none available</div>
+                </div>
+                <div class="image-meta" id="meta-Backdrop"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Logo Section -->
+          <section class="image-section" data-type="Logo">
+            <div class="section-divider">
+              <span class="section-label">logo</span>
+            </div>
+            <div class="image-row">
+              <div class="current-image-col">
+                <div class="image-label">current</div>
+                <div class="image-frame current-frame logo-frame" data-type="Logo">
+                  <img id="current-Logo" class="image-preview" alt="no logo">
+                  <div class="no-image">no logo</div>
+                </div>
+                <div class="current-meta" id="current-meta-Logo"></div>
+              </div>
+              <div class="available-image-col">
+                <div class="image-label">
+                  available
+                  <span class="image-counter" id="counter-Logo"></span>
+                </div>
+                <div class="thumb-grid" id="grid-Logo" data-type="Logo">
+                  <div class="no-image-grid">none available</div>
+                </div>
+                <div class="image-meta" id="meta-Logo"></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="action-bar">
+          <button id="btn-apply" class="btn btn-action">apply &amp; next</button>
+          <button id="btn-skip" class="btn btn-action">skip</button>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span>settings</span>
+        <button class="modal-close" id="settings-close">&times;</button>
+      </div>
+      <form id="settings-form" autocomplete="off">
+        <div class="form-group">
+          <label>server url</label>
+          <input type="text" id="settings-url" required>
+        </div>
+        <div class="form-group">
+          <label>username</label>
+          <input type="text" id="settings-username" required>
+        </div>
+        <div class="form-group">
+          <label>password</label>
+          <input type="password" id="settings-password" required>
+        </div>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">reconnect</button>
+          <button type="button" class="btn" id="settings-logout">logout</button>
+        </div>
+        <div id="settings-error" class="error-msg"></div>
+      </form>
+      <div class="modal-divider"></div>
+      <div class="modal-section">
+        <span class="modal-section-label">data</span>
+        <div class="modal-actions">
+          <button type="button" class="btn" id="btn-export">export progress</button>
+          <button type="button" class="btn" id="btn-import">import progress</button>
+          <input type="file" id="import-file" accept=".json" class="hidden">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fullscreen Preview -->
+  <div id="preview-overlay" class="preview-overlay hidden">
+    <img id="preview-img" class="preview-img" alt="">
+    <div id="preview-meta" class="preview-meta"></div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/motion@12/dist/motion.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/carousel.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+services:
+  jellyfin-posters:
+    image: ghcr.io/gokulbhasi/jellyfin-posters:latest
+    container_name: jellyfin-posters
+    ports:
+      - "8000:8000"
+    volumes:
+      - poster_data:/data
+    env_file:
+      - .env
+    environment:
+      - DB_PATH=/data/progress.db
+    restart: unless-stopped
+
+volumes:
+  poster_data:
