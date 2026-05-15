@@ -25,7 +25,10 @@ class JellyfinClient:
         self.server_url = server_url.rstrip("/")
         self.token: str | None = None
         self.user_id: str | None = None
-        self._http = httpx.AsyncClient(timeout=30.0)
+        self._http = httpx.AsyncClient(
+            timeout=30.0,
+            limits=httpx.Limits(max_connections=200, max_keepalive_connections=50),
+        )
 
     async def close(self) -> None:
         await self._http.aclose()

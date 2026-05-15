@@ -105,6 +105,22 @@ function firstUnreviewedIndex() {
   return idx >= 0 ? idx : 0;
 }
 
+function nextUnreviewedIndex(from) {
+  for (let i = from + 1; i < movies.length; i++) if (!movies[i].reviewed) return i;
+  for (let i = 0; i <= from && i < movies.length; i++) if (!movies[i].reviewed) return i;
+  return -1;
+}
+
+function goToNextUnreviewed() {
+  const next = nextUnreviewedIndex(currentIndex);
+  if (next === -1) {
+    showToast("all movies reviewed — back to start");
+    navigateTo(0);
+  } else {
+    navigateTo(next);
+  }
+}
+
 // ── Sidebar ──
 function renderSidebar() {
   movieListEl.innerHTML = "";
@@ -317,10 +333,8 @@ async function applyAndNext() {
       showToast("marked as reviewed — moving to next");
     }
 
-    // Go to next
-    if (currentIndex + 1 < movies.length) {
-      navigateTo(currentIndex + 1);
-    }
+    // Go to next unreviewed
+    goToNextUnreviewed();
   } catch (err) {
     showToast("error: " + err.message);
   } finally {
@@ -330,11 +344,7 @@ async function applyAndNext() {
 }
 
 // ── Skip ──
-btnSkip.addEventListener("click", () => {
-  if (currentIndex + 1 < movies.length) {
-    navigateTo(currentIndex + 1);
-  }
-});
+btnSkip.addEventListener("click", goToNextUnreviewed);
 
 // ── Settings Modal ──
 const settingsModal = document.getElementById("settings-modal");
@@ -574,7 +584,7 @@ document.addEventListener("keydown", (e) => {
     case "s":
     case "S":
       e.preventDefault();
-      if (currentIndex + 1 < movies.length) navigateTo(currentIndex + 1);
+      goToNextUnreviewed();
       break;
     case "/":
       e.preventDefault();
