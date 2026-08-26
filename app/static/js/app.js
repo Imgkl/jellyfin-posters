@@ -10,6 +10,8 @@ let currentIndex = 0;
 let reviewedCount = 0;
 let lastServerUrl = "";
 let lastUsername = "";
+let navigationSequence = 0;
+let refreshInProgress = false;
 
 const grids = {
   Primary: new ImageGrid("Primary"),
@@ -184,7 +186,9 @@ searchInput.addEventListener("input", () => {
 
 // ── Navigate to movie ──
 async function navigateTo(index) {
+  if (refreshInProgress) return;
   if (index < 0 || index >= movies.length) return;
+  const navigationId = ++navigationSequence;
   currentIndex = index;
   const movie = movies[index];
 
@@ -206,6 +210,8 @@ async function navigateTo(index) {
       api.get(`/api/movies/${movie.id}/remote-images`),
     ]);
 
+    if (navigationId !== navigationSequence) return;
+
     // Set current images
     setCurrentImage("Primary", currentImages.Primary);
     setCurrentImage("Backdrop", currentImages.Backdrop);
@@ -216,10 +222,14 @@ async function navigateTo(index) {
     grids.Backdrop.load(remoteImages.Backdrop);
     grids.Logo.load(remoteImages.Logo);
   } catch (err) {
-    showToast("failed to load images: " + err.message);
+    if (navigationId === navigationSequence) {
+      showToast("failed to load images: " + err.message);
+    }
   } finally {
-    loadingEl.classList.add("hidden");
-    animate("#image-sections", { opacity: [0, 1] }, { duration: 0.25 });
+    if (navigationId === navigationSequence) {
+      loadingEl.classList.add("hidden");
+      animate("#image-sections", { opacity: [0, 1] }, { duration: 0.25 });
+    }
   }
 
   // Prefetch next movie's images
@@ -245,7 +255,9 @@ function setCurrentImage(type, info) {
       }
     };
   } else {
-    img.src = "";
+    img.onload = null;
+    img.onerror = null;
+    img.removeAttribute("src");
     img.style.display = "none";
     noImg.style.display = "block";
     metaEl.textContent = "";
@@ -257,6 +269,7 @@ function setCurrentImage(type, info) {
 btnApply.addEventListener("click", applyAndNext);
 
 async function applyAndNext() {
+  if (refreshInProgress) return;
   const movie = movies[currentIndex];
   if (!movie) return;
 
@@ -354,6 +367,7 @@ const btnSettings = document.getElementById("btn-settings");
 const btnRefresh = document.getElementById("btn-refresh");
 
 function openSettings() {
+  if (refreshInProgress) return;
   document.getElementById("settings-url").value = lastServerUrl;
   document.getElementById("settings-username").value = lastUsername;
   document.getElementById("settings-password").value = "";
@@ -373,6 +387,7 @@ settingsModal.addEventListener("click", (e) => {
 
 settingsForm.addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (refreshInProgress) return;
   settingsError.textContent = "";
   const submitBtn = settingsForm.querySelector('button[type="submit"]');
   submitBtn.textContent = "connecting...";
@@ -401,6 +416,7 @@ settingsForm.addEventListener("submit", async (e) => {
 });
 
 document.getElementById("settings-logout").addEventListener("click", async () => {
+  if (refreshInProgress) return;
   try {
     await api.post("/api/auth/logout", {});
   } catch {}
@@ -415,18 +431,40 @@ document.getElementById("settings-logout").addEventListener("click", async () =>
 
 // ── Refresh ──
 async function refreshMovies() {
+  if (refreshInProgress) return;
+  refreshInProgress = true;
+  navigationSequence += 1;
+  Object.values(grids).forEach((grid) => grid.cancelLoads());
+  setCurrentImage("Primary", null);
+  setCurrentImage("Backdrop", null);
+  setCurrentImage("Logo", null);
+  loadingEl.classList.remove("hidden");
   btnRefresh.disabled = true;
   btnRefresh.classList.add("loading");
   try {
     const result = await api.post("/api/library/refresh", {});
     await loadMovies();
-    if (movies.length > 0) navigateTo(firstUnreviewedIndex());
+    refreshInProgress = false;
+    if (movies.length > 0) {
+      navigateTo(firstUnreviewedIndex());
+    } else {
+      loadingEl.classList.add("hidden");
+      animate("#image-sections", { opacity: [0, 1] }, { duration: 0.25 });
+    }
     const parts = [result.total_movies + " movies"];
     if (result.stale_removed > 0) parts.push(result.stale_removed + " stale removed");
     showToast("refreshed — " + parts.join(", "));
   } catch (err) {
     showToast("refresh failed: " + err.message);
+    refreshInProgress = false;
+    if (movies.length > 0) {
+      await navigateTo(currentIndex);
+    } else {
+      loadingEl.classList.add("hidden");
+      animate("#image-sections", { opacity: [0, 1] }, { duration: 0.25 });
+    }
   } finally {
+    refreshInProgress = false;
     btnRefresh.disabled = false;
     btnRefresh.classList.remove("loading");
   }
@@ -437,6 +475,7 @@ btnRefresh.addEventListener("click", refreshMovies);
 // ── Cleanup Backdrops ──
 const btnCleanup = document.getElementById("btn-cleanup-backdrops");
 async function cleanupBackdrops() {
+  if (refreshInProgress) return;
   btnCleanup.disabled = true;
   btnCleanup.classList.add("loading");
   try {
@@ -454,6 +493,7 @@ btnCleanup.addEventListener("click", cleanupBackdrops);
 // ── Import / Export ──
 const btnExport = document.getElementById("btn-export");
 btnExport.addEventListener("click", async () => {
+  if (refreshInProgress) return;
   btnExport.disabled = true;
   btnExport.textContent = "exporting…";
   try {
@@ -478,10 +518,12 @@ btnExport.addEventListener("click", async () => {
 const btnImport = document.getElementById("btn-import");
 const importFileInput = document.getElementById("import-file");
 btnImport.addEventListener("click", () => {
+  if (refreshInProgress) return;
   importFileInput.click();
 });
 
 importFileInput.addEventListener("change", async () => {
+  if (refreshInProgress) return;
   const file = importFileInput.files[0];
   if (!file) return;
   btnImport.disabled = true;

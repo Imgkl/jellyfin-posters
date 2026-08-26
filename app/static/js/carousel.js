@@ -20,6 +20,18 @@ class ImageGrid {
     this.render();
   }
 
+  cancelLoads() {
+    this.gridEl.querySelectorAll(".thumb img").forEach((img) => img.removeAttribute("src"));
+    this.gridEl.querySelectorAll(".thumb").forEach((el) => el.remove());
+    this.gridEl.classList.remove("expanded");
+    this.counterEl.parentElement.querySelector(".grid-toggle")?.remove();
+    this.images = [];
+    this.selectedIndex = -1;
+    this.counterEl.textContent = "";
+    this.metaEl.textContent = "";
+    this.noImageEl.style.display = "block";
+  }
+
   render() {
     // Clear existing thumbnails (keep no-image placeholder)
     this.gridEl.querySelectorAll(".thumb").forEach((el) => el.remove());
