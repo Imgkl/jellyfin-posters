@@ -3,6 +3,9 @@ class ImageGrid {
     this.type = type;
     this.images = [];
     this.selectedIndex = -1;
+    this.loadGeneration = 0;
+    this.pendingLoads = 0;
+    this.loadStartedAt = 0;
 
     this.gridEl = document.getElementById(`grid-${type}`);
     this.counterEl = document.getElementById(`counter-${type}`);
@@ -11,12 +14,20 @@ class ImageGrid {
   }
 
   load(images) {
+    this.loadGeneration += 1;
+    this.loadStartedAt = performance.now();
     this.images = (images || []).slice().sort((a, b) => {
       const areaA = (a.width || 0) * (a.height || 0);
       const areaB = (b.width || 0) * (b.height || 0);
       return areaB - areaA;
     });
     this.selectedIndex = -1;
+    this.pendingLoads = this.images.length;
+    jpDiagnostics.log("grid.load.start", {
+      type: this.type,
+      generation: this.loadGeneration,
+      image_count: this.images.length,
+    });
     this.render();
   }
 
@@ -28,6 +39,12 @@ class ImageGrid {
       this.noImageEl.style.display = "block";
       this.counterEl.textContent = "";
       this.metaEl.textContent = "";
+      jpDiagnostics.log("grid.load.complete", {
+        type: this.type,
+        generation: this.loadGeneration,
+        image_count: 0,
+        elapsed_ms: 0,
+      });
       return;
     }
 
@@ -55,9 +72,36 @@ class ImageGrid {
 
       const imgEl = document.createElement("img");
       const thumbUrl = img.thumbnail_url || img.url;
-      imgEl.src = api.proxyUrl(thumbUrl);
       imgEl.alt = "";
       imgEl.loading = "lazy";
+
+      const generation = this.loadGeneration;
+      const imageStartedAt = performance.now();
+      const settle = (outcome) => {
+        const stale = generation !== this.loadGeneration;
+        if (!stale) this.pendingLoads = Math.max(0, this.pendingLoads - 1);
+        jpDiagnostics.log(`grid.image.${outcome}`, {
+          type: this.type,
+          generation,
+          index: i,
+          stale,
+          pending: stale ? null : this.pendingLoads,
+          elapsed_ms: Math.round((performance.now() - imageStartedAt) * 10) / 10,
+          width: imgEl.naturalWidth || 0,
+          height: imgEl.naturalHeight || 0,
+        });
+        if (!stale && this.pendingLoads === 0) {
+          jpDiagnostics.log("grid.load.complete", {
+            type: this.type,
+            generation,
+            image_count: this.images.length,
+            elapsed_ms: Math.round((performance.now() - this.loadStartedAt) * 10) / 10,
+          });
+        }
+      };
+      imgEl.addEventListener("load", () => settle("loaded"), { once: true });
+      imgEl.addEventListener("error", () => settle("error"), { once: true });
+      imgEl.src = api.proxyUrl(thumbUrl);
 
       thumb.appendChild(imgEl);
 

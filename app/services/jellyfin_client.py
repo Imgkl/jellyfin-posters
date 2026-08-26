@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import time
+from urllib.parse import urlsplit
+
 import httpx
+
+from app.diagnostics import log_diagnostic
 
 _DEVICE_NAME = "JellyfinPosterManager"
 _DEVICE_ID = "jellyfin-poster-mgr-001"
@@ -25,10 +30,25 @@ class JellyfinClient:
         self.server_url = server_url.rstrip("/")
         self.token: str | None = None
         self.user_id: str | None = None
+        self._active_proxy_requests = 0
         self._http = httpx.AsyncClient(
             timeout=30.0,
             limits=httpx.Limits(max_connections=200, max_keepalive_connections=50),
         )
+
+    def _pool_snapshot(self) -> dict[str, int | None]:
+        """Best-effort diagnostics only; never affects request behavior."""
+        try:
+            pool = getattr(getattr(self._http, "_transport", None), "_pool", None)
+            connections = getattr(pool, "connections", None)
+            if connections is None:
+                return {"pool_connections": None, "pool_available": None}
+            return {
+                "pool_connections": len(connections),
+                "pool_available": sum(1 for connection in connections if connection.is_available()),
+            }
+        except Exception:
+            return {"pool_connections": None, "pool_available": None}
 
     async def close(self) -> None:
         await self._http.aclose()
@@ -55,19 +75,35 @@ class JellyfinClient:
         return self.token is not None and self.user_id is not None
 
     async def get_movies(self) -> list[dict]:
-        resp = await self._http.get(
-            f"{self.server_url}/Users/{self.user_id}/Items",
-            params={
-                "IncludeItemTypes": "Movie",
-                "Recursive": "true",
-                "SortBy": "SortName",
-                "SortOrder": "Ascending",
-                "Fields": "PrimaryImageAspectRatio,ImageTags,BackdropImageTags",
-                "EnableImageTypes": "Primary,Backdrop,Logo",
-                "Limit": "2000",
-            },
-            headers=self._headers(),
+        started_at = time.perf_counter()
+        log_diagnostic(
+            "jellyfin.movies.start",
+            active_proxy_requests=self._active_proxy_requests,
+            **self._pool_snapshot(),
         )
+        try:
+            resp = await self._http.get(
+                f"{self.server_url}/Users/{self.user_id}/Items",
+                params={
+                    "IncludeItemTypes": "Movie",
+                    "Recursive": "true",
+                    "SortBy": "SortName",
+                    "SortOrder": "Ascending",
+                    "Fields": "PrimaryImageAspectRatio,ImageTags,BackdropImageTags",
+                    "EnableImageTypes": "Primary,Backdrop,Logo",
+                    "Limit": "2000",
+                },
+                headers=self._headers(),
+            )
+        except Exception as error:
+            log_diagnostic(
+                "jellyfin.movies.error",
+                error_type=type(error).__name__,
+                elapsed_ms=round((time.perf_counter() - started_at) * 1000, 1),
+                active_proxy_requests=self._active_proxy_requests,
+                **self._pool_snapshot(),
+            )
+            raise
         resp.raise_for_status()
         data = resp.json()
         movies = []
@@ -82,6 +118,14 @@ class JellyfinClient:
                 "has_backdrop": len(backdrop_tags) > 0,
                 "has_logo": "Logo" in image_tags,
             })
+        log_diagnostic(
+            "jellyfin.movies.complete",
+            status=resp.status_code,
+            movie_count=len(movies),
+            elapsed_ms=round((time.perf_counter() - started_at) * 1000, 1),
+            active_proxy_requests=self._active_proxy_requests,
+            **self._pool_snapshot(),
+        )
         return movies
 
     async def get_movie(self, item_id: str) -> dict:
@@ -163,6 +207,13 @@ class JellyfinClient:
 
     async def get_all_remote_images(self, item_id: str) -> dict:
         import asyncio
+        started_at = time.perf_counter()
+        log_diagnostic(
+            "jellyfin.remote_images.start",
+            item_id=item_id,
+            active_proxy_requests=self._active_proxy_requests,
+            **self._pool_snapshot(),
+        )
         primary, backdrop, logo, thumb = await asyncio.gather(
             self.get_remote_images(item_id, "Primary"),
             self.get_remote_images(item_id, "Backdrop"),
@@ -172,11 +223,21 @@ class JellyfinClient:
         )
         backdrop_list = backdrop if not isinstance(backdrop, Exception) else []
         thumb_list = thumb if not isinstance(thumb, Exception) else []
-        return {
+        result = {
             "Primary": primary if not isinstance(primary, Exception) else [],
             "Backdrop": backdrop_list + thumb_list,
             "Logo": logo if not isinstance(logo, Exception) else [],
         }
+        log_diagnostic(
+            "jellyfin.remote_images.complete",
+            item_id=item_id,
+            elapsed_ms=round((time.perf_counter() - started_at) * 1000, 1),
+            counts={image_type: len(images) for image_type, images in result.items()},
+            errors=sum(isinstance(value, Exception) for value in (primary, backdrop, logo, thumb)),
+            active_proxy_requests=self._active_proxy_requests,
+            **self._pool_snapshot(),
+        )
+        return result
 
     async def delete_item_images(self, item_id: str, image_type: str) -> None:
         """Delete ALL images of the given type from the item."""
@@ -221,11 +282,42 @@ class JellyfinClient:
         return image_type in item.get("ImageTags", {})
 
     async def proxy_image(self, url: str) -> tuple[bytes, str]:
-        resp = await self._http.get(
-            url,
-            headers=self._headers(),
-            timeout=15.0,
+        started_at = time.perf_counter()
+        self._active_proxy_requests += 1
+        upstream_host = urlsplit(url).hostname or "unknown"
+        log_diagnostic(
+            "jellyfin.proxy.start",
+            upstream_host=upstream_host,
+            active_proxy_requests=self._active_proxy_requests,
+            **self._pool_snapshot(),
         )
-        resp.raise_for_status()
-        content_type = resp.headers.get("content-type", "image/jpeg")
-        return resp.content, content_type
+        try:
+            resp = await self._http.get(
+                url,
+                headers=self._headers(),
+                timeout=15.0,
+            )
+            resp.raise_for_status()
+            content_type = resp.headers.get("content-type", "image/jpeg")
+            log_diagnostic(
+                "jellyfin.proxy.complete",
+                upstream_host=upstream_host,
+                status=resp.status_code,
+                bytes=len(resp.content),
+                elapsed_ms=round((time.perf_counter() - started_at) * 1000, 1),
+                active_proxy_requests=self._active_proxy_requests,
+                **self._pool_snapshot(),
+            )
+            return resp.content, content_type
+        except Exception as error:
+            log_diagnostic(
+                "jellyfin.proxy.error",
+                upstream_host=upstream_host,
+                error_type=type(error).__name__,
+                elapsed_ms=round((time.perf_counter() - started_at) * 1000, 1),
+                active_proxy_requests=self._active_proxy_requests,
+                **self._pool_snapshot(),
+            )
+            raise
+        finally:
+            self._active_proxy_requests -= 1

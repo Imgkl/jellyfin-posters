@@ -5,6 +5,7 @@ import asyncio
 from fastapi import APIRouter, Depends
 
 from app.dependencies import require_auth
+from app.diagnostics import log_diagnostic
 from app.models.schemas import MarkReviewedRequest
 from app.services.progress_db import cleanup_removed, mark_reviewed
 from app.state import AppState
@@ -14,10 +15,24 @@ router = APIRouter()
 
 @router.post("/api/library/refresh")
 async def refresh_movies(state: AppState = Depends(require_auth)):
+    previous_count = len(state.movie_list)
+    previous_cache_entries = len(state.remote_cache)
+    log_diagnostic(
+        "refresh.backend.start",
+        previous_movie_count=previous_count,
+        remote_cache_entries=previous_cache_entries,
+    )
     state.movie_list = await state.client.get_movies()
     state.remote_cache.clear()
     valid_ids = {m["id"] for m in state.movie_list}
     removed = await cleanup_removed(valid_ids)
+    log_diagnostic(
+        "refresh.backend.complete",
+        previous_movie_count=previous_count,
+        movie_count=len(state.movie_list),
+        cleared_cache_entries=previous_cache_entries,
+        stale_removed=removed,
+    )
     return {"ok": True, "total_movies": len(state.movie_list), "stale_removed": removed}
 
 
