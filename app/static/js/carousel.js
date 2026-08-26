@@ -38,6 +38,8 @@ class ImageGrid {
       img.removeAttribute("src");
     });
     this.gridEl.querySelectorAll(".thumb").forEach((el) => el.remove());
+    this.gridEl.classList.remove("expanded");
+    this.counterEl.parentElement.querySelector(".grid-toggle")?.remove();
     this.images = [];
     this.selectedIndex = -1;
     this.pendingLoads = 0;
