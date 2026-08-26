@@ -34,22 +34,6 @@ const btnApply = document.getElementById("btn-apply");
 const btnSkip = document.getElementById("btn-skip");
 const toastEl = document.getElementById("toast");
 
-function diagnosticSnapshot() {
-  const thumbs = [...document.querySelectorAll(".thumb img")];
-  return {
-    current_index: currentIndex,
-    movie_count: movies.length,
-    reviewed_count: reviewedCount,
-    title: movieTitle.textContent,
-    loading_indicator_visible: !loadingEl.classList.contains("hidden"),
-    thumbnail_count: thumbs.length,
-    thumbnails_pending: thumbs.filter((img) => !img.complete).length,
-    grid_pending: Object.fromEntries(
-      Object.entries(grids).map(([type, grid]) => [type, grid.pendingLoads])
-    ),
-  };
-}
-
 // ── Toast ──
 let toastTimer = null;
 function showToast(msg) {
@@ -110,18 +94,12 @@ async function autoLogin() {
 
 // ── Load movies ──
 async function loadMovies() {
-  const startedAt = performance.now();
-  jpDiagnostics.log("movies.load.start", diagnosticSnapshot());
   const data = await api.get("/api/movies");
   movies = data.items;
   filteredMovies = movies;
   reviewedCount = movies.filter((m) => m.reviewed).length;
   renderSidebar();
   updateProgress();
-  jpDiagnostics.log("movies.load.complete", {
-    ...diagnosticSnapshot(),
-    elapsed_ms: Math.round((performance.now() - startedAt) * 10) / 10,
-  });
 }
 
 function firstUnreviewedIndex() {
@@ -208,27 +186,11 @@ searchInput.addEventListener("input", () => {
 
 // ── Navigate to movie ──
 async function navigateTo(index) {
-  if (refreshInProgress) {
-    jpDiagnostics.log("navigation.rejected", { index, reason: "refresh_in_progress" });
-    return;
-  }
-  if (index < 0 || index >= movies.length) {
-    jpDiagnostics.log("navigation.rejected", { index, movie_count: movies.length });
-    return;
-  }
+  if (refreshInProgress) return;
+  if (index < 0 || index >= movies.length) return;
   const navigationId = ++navigationSequence;
-  const startedAt = performance.now();
-  const previousIndex = currentIndex;
   currentIndex = index;
   const movie = movies[index];
-
-  jpDiagnostics.log("navigation.start", {
-    navigation_id: navigationId,
-    previous_index: previousIndex,
-    target_index: index,
-    movie_id: movie.id,
-    ...diagnosticSnapshot(),
-  });
 
   movieTitle.textContent = `${movie.name}${movie.year ? ` (${movie.year})` : ""}`;
   highlightActive();
@@ -248,26 +210,7 @@ async function navigateTo(index) {
       api.get(`/api/movies/${movie.id}/remote-images`),
     ]);
 
-    if (navigationId !== navigationSequence) {
-      jpDiagnostics.log("navigation.stale", {
-        navigation_id: navigationId,
-        active_navigation_id: navigationSequence,
-        target_index: index,
-        elapsed_ms: Math.round((performance.now() - startedAt) * 10) / 10,
-      });
-      return;
-    }
-
-    jpDiagnostics.log("navigation.metadata.complete", {
-      navigation_id: navigationId,
-      target_index: index,
-      still_current: currentIndex === index,
-      elapsed_ms: Math.round((performance.now() - startedAt) * 10) / 10,
-      current_image_types: Object.keys(currentImages),
-      remote_counts: Object.fromEntries(
-        Object.entries(remoteImages).map(([type, images]) => [type, images.length])
-      ),
-    });
+    if (navigationId !== navigationSequence) return;
 
     // Set current images
     setCurrentImage("Primary", currentImages.Primary);
@@ -278,41 +221,19 @@ async function navigateTo(index) {
     grids.Primary.load(remoteImages.Primary);
     grids.Backdrop.load(remoteImages.Backdrop);
     grids.Logo.load(remoteImages.Logo);
-    jpDiagnostics.log("navigation.grids.rendered", {
-      navigation_id: navigationId,
-      target_index: index,
-      still_current: currentIndex === index,
-      ...diagnosticSnapshot(),
-    });
   } catch (err) {
-    const stillCurrent = navigationId === navigationSequence;
-    jpDiagnostics.log(stillCurrent ? "navigation.error" : "navigation.stale_error", {
-      navigation_id: navigationId,
-      target_index: index,
-    });
-    if (stillCurrent) showToast("failed to load images: " + err.message);
+    if (navigationId === navigationSequence) {
+      showToast("failed to load images: " + err.message);
+    }
   } finally {
-    const stillCurrent = navigationId === navigationSequence;
-    if (stillCurrent) {
+    if (navigationId === navigationSequence) {
       loadingEl.classList.add("hidden");
       animate("#image-sections", { opacity: [0, 1] }, { duration: 0.25 });
     }
-    jpDiagnostics.log("navigation.complete", {
-      navigation_id: navigationId,
-      target_index: index,
-      still_current: stillCurrent,
-      elapsed_ms: Math.round((performance.now() - startedAt) * 10) / 10,
-      ...diagnosticSnapshot(),
-    });
   }
 
   // Prefetch next movie's images
   if (index + 1 < movies.length) {
-    jpDiagnostics.log("navigation.prefetch.start", {
-      navigation_id: navigationId,
-      target_index: index + 1,
-      movie_id: movies[index + 1].id,
-    });
     api.post(`/api/movies/${movies[index + 1].id}/prefetch`, {}).catch(() => {});
   }
 }
@@ -332,15 +253,6 @@ function setCurrentImage(type, info) {
       } else {
         metaEl.textContent = "";
       }
-      jpDiagnostics.log("current_image.loaded", {
-        type,
-        width: img.naturalWidth || 0,
-        height: img.naturalHeight || 0,
-        ...diagnosticSnapshot(),
-      });
-    };
-    img.onerror = () => {
-      jpDiagnostics.log("current_image.error", { type, ...diagnosticSnapshot() });
     };
   } else {
     img.onload = null;
@@ -521,49 +433,23 @@ document.getElementById("settings-logout").addEventListener("click", async () =>
 async function refreshMovies() {
   if (refreshInProgress) return;
   refreshInProgress = true;
-  const refreshId = `refresh-${Date.now().toString(36)}`;
-  const startedAt = performance.now();
-  jpDiagnostics.log("refresh.click", { refresh_id: refreshId, ...diagnosticSnapshot() });
   navigationSequence += 1;
-  Object.values(grids).forEach((grid) => grid.cancelLoads("refresh"));
+  Object.values(grids).forEach((grid) => grid.cancelLoads());
   setCurrentImage("Primary", null);
   setCurrentImage("Backdrop", null);
   setCurrentImage("Logo", null);
   loadingEl.classList.remove("hidden");
-  jpDiagnostics.log("refresh.client_loads.cancelled", {
-    refresh_id: refreshId,
-    navigation_id: navigationSequence,
-    ...diagnosticSnapshot(),
-  });
   btnRefresh.disabled = true;
   btnRefresh.classList.add("loading");
   try {
     const result = await api.post("/api/library/refresh", {});
-    jpDiagnostics.log("refresh.backend.complete", {
-      refresh_id: refreshId,
-      elapsed_ms: Math.round((performance.now() - startedAt) * 10) / 10,
-      total_movies: result.total_movies,
-      stale_removed: result.stale_removed,
-      ...diagnosticSnapshot(),
-    });
     await loadMovies();
-    const targetIndex = firstUnreviewedIndex();
-    jpDiagnostics.log("refresh.navigation.dispatch", {
-      refresh_id: refreshId,
-      target_index: targetIndex,
-      ...diagnosticSnapshot(),
-    });
     refreshInProgress = false;
-    if (movies.length > 0) navigateTo(targetIndex);
+    if (movies.length > 0) navigateTo(firstUnreviewedIndex());
     const parts = [result.total_movies + " movies"];
     if (result.stale_removed > 0) parts.push(result.stale_removed + " stale removed");
     showToast("refreshed — " + parts.join(", "));
   } catch (err) {
-    jpDiagnostics.log("refresh.error", {
-      refresh_id: refreshId,
-      elapsed_ms: Math.round((performance.now() - startedAt) * 10) / 10,
-      ...diagnosticSnapshot(),
-    });
     showToast("refresh failed: " + err.message);
     refreshInProgress = false;
     if (movies.length > 0) await navigateTo(currentIndex);
@@ -571,11 +457,6 @@ async function refreshMovies() {
     refreshInProgress = false;
     btnRefresh.disabled = false;
     btnRefresh.classList.remove("loading");
-    jpDiagnostics.log("refresh.complete", {
-      refresh_id: refreshId,
-      elapsed_ms: Math.round((performance.now() - startedAt) * 10) / 10,
-      ...diagnosticSnapshot(),
-    });
   }
 }
 

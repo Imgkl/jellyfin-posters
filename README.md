@@ -153,27 +153,6 @@ sequenceDiagram
 | `/api/progress` | Review statistics |
 | `/api/data` | Export/import progress data |
 
-## Refresh Diagnostics
-
-This diagnostic build records correlated timing without logging credentials, request bodies, full image URLs, or query strings.
-
-In the browser developer console:
-
-```js
-jpDiagnostics.download() // download the in-memory log as JSON
-jpDiagnostics.copy()     // copy it when the Clipboard API is available
-jpDiagnostics.export()   // return the raw JSON text
-jpDiagnostics.clear()    // clear the in-memory ring before reproducing
-```
-
-Backend events use the same `[JP-DIAG]` prefix and API correlation IDs:
-
-```bash
-docker logs jellyfin-posters 2>&1 | grep '\[JP-DIAG\]'
-```
-
-The browser ring keeps the latest 3,000 events. Reloading the page clears it.
-
 ## Tech Stack
 
 | Layer | Technology |
