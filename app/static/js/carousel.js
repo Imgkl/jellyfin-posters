@@ -31,6 +31,27 @@ class ImageGrid {
     this.render();
   }
 
+  cancelLoads(reason = "cancelled") {
+    const cancelled = this.pendingLoads;
+    this.loadGeneration += 1;
+    this.gridEl.querySelectorAll(".thumb img").forEach((img) => {
+      img.removeAttribute("src");
+    });
+    this.gridEl.querySelectorAll(".thumb").forEach((el) => el.remove());
+    this.images = [];
+    this.selectedIndex = -1;
+    this.pendingLoads = 0;
+    this.counterEl.textContent = "";
+    this.metaEl.textContent = "";
+    this.noImageEl.style.display = "block";
+    jpDiagnostics.log("grid.load.cancelled", {
+      type: this.type,
+      generation: this.loadGeneration,
+      cancelled,
+      reason,
+    });
+  }
+
   render() {
     // Clear existing thumbnails (keep no-image placeholder)
     this.gridEl.querySelectorAll(".thumb").forEach((el) => el.remove());

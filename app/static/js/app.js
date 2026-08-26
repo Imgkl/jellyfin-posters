@@ -243,6 +243,16 @@ async function navigateTo(index) {
       api.get(`/api/movies/${movie.id}/remote-images`),
     ]);
 
+    if (navigationId !== navigationSequence) {
+      jpDiagnostics.log("navigation.stale", {
+        navigation_id: navigationId,
+        active_navigation_id: navigationSequence,
+        target_index: index,
+        elapsed_ms: Math.round((performance.now() - startedAt) * 10) / 10,
+      });
+      return;
+    }
+
     jpDiagnostics.log("navigation.metadata.complete", {
       navigation_id: navigationId,
       target_index: index,
@@ -497,6 +507,14 @@ async function refreshMovies() {
   const refreshId = `refresh-${Date.now().toString(36)}`;
   const startedAt = performance.now();
   jpDiagnostics.log("refresh.click", { refresh_id: refreshId, ...diagnosticSnapshot() });
+  navigationSequence += 1;
+  Object.values(grids).forEach((grid) => grid.cancelLoads("refresh"));
+  document.querySelectorAll(".current-frame img").forEach((img) => img.removeAttribute("src"));
+  jpDiagnostics.log("refresh.client_loads.cancelled", {
+    refresh_id: refreshId,
+    navigation_id: navigationSequence,
+    ...diagnosticSnapshot(),
+  });
   btnRefresh.disabled = true;
   btnRefresh.classList.add("loading");
   try {
