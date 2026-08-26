@@ -445,14 +445,24 @@ async function refreshMovies() {
     const result = await api.post("/api/library/refresh", {});
     await loadMovies();
     refreshInProgress = false;
-    if (movies.length > 0) navigateTo(firstUnreviewedIndex());
+    if (movies.length > 0) {
+      navigateTo(firstUnreviewedIndex());
+    } else {
+      loadingEl.classList.add("hidden");
+      animate("#image-sections", { opacity: [0, 1] }, { duration: 0.25 });
+    }
     const parts = [result.total_movies + " movies"];
     if (result.stale_removed > 0) parts.push(result.stale_removed + " stale removed");
     showToast("refreshed — " + parts.join(", "));
   } catch (err) {
     showToast("refresh failed: " + err.message);
     refreshInProgress = false;
-    if (movies.length > 0) await navigateTo(currentIndex);
+    if (movies.length > 0) {
+      await navigateTo(currentIndex);
+    } else {
+      loadingEl.classList.add("hidden");
+      animate("#image-sections", { opacity: [0, 1] }, { duration: 0.25 });
+    }
   } finally {
     refreshInProgress = false;
     btnRefresh.disabled = false;
