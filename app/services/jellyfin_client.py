@@ -34,8 +34,9 @@ class JellyfinClient:
         await self._http.aclose()
 
     def _headers(self) -> dict[str, str]:
+        # Jellyfin 12.4 rejects the legacy X-Emby-Authorization header with 401.
         return {
-            "X-Emby-Authorization": _auth_header(self.token),
+            "Authorization": _auth_header(self.token),
         }
 
     async def authenticate(self, username: str, password: str) -> dict:
